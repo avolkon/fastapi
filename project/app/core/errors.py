@@ -38,3 +38,12 @@ class NotFoundError(AppError):
 
 class ExternalServiceError(AppError):
     """Ошибка внешнего провайдера (например, OpenRouter)."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        ref_id: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.ref_id = ref_id
