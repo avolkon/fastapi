@@ -1,4 +1,4 @@
-Пакет документации для разработки. См. также `Эпик4.txt` в этой папке (выжимка из Arch_TechDesign). Пути модулей: `project/app` относительно корня репозитория.
+Пакет документации для разработки. См. также `Эпик4.txt` в этой папке (выжимка из Arch_TechDesign). Пути модулей: `app` относительно корня репозитория.
 
 ---
 
@@ -8,7 +8,7 @@
 Интеграция LLM изолирована в сервисе; ошибки становятся `ExternalServiceError`.
 
 ## Текущее состояние
-**Файл:** `project/app/services/openrouter_client.py`  
+**Файл:** `app/services/openrouter_client.py`  
 **Функция/класс:** `OpenRouterClient.chat_completion`  
 **Текущий вывод/поведение:** нет клиента или сырой проброс ошибок без доменной обёртки  
 **Необходимый вывод/поведение:** POST chat/completions с заголовками из settings; timeouts; текст ответа; ошибки провайдера → ExternalServiceError
@@ -45,7 +45,7 @@ ExternalServiceError с безопасным сообщением клиенту
 ```
 
 ## Файлы для изменения
-- `project/app/services/openrouter_client.py`
+- `app/services/openrouter_client.py`
 - **Не изменять:** репозитории и use case — только реализуются вызовы на этапе 5; клиент здесь автономен
 
 ## Пример реализации

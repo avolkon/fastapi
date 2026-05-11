@@ -5,18 +5,23 @@
 - **Python**: 3.11+
 - **Зависимости**: см. `pyproject.toml` в корне репозитория; рекомендуемый установщик — [uv](https://github.com/astral-sh/uv).
 
-Код приложения расположен в каталоге `project/app` (слои: api → usecases → repositories / services).
+Код приложения — пакет `app/` в **корне репозитория** (слои: api → usecases → repositories / services), как в **ТЗ_0**.
 
 ## Быстрый старт
 
-1. Перейти в каталог проекта приложения и скопировать пример конфигурации:
+Дальше команды выполняйте из **корня репозитория** (где лежат `pyproject.toml` и каталог `app`).
+
+1. Скопировать пример переменных окружения:
 
    ```text
-   cd project
-   copy ..\.env.example .env   (Windows PowerShell можно: Copy-Item ..\.env.example .env)
+   copy .env.example .env
    ```
 
-2. Отредактировать `project\.env`: задать `JWT_SECRET`, при необходимости `OPENROUTER_API_KEY` и прочие поля из примера.
+   (PowerShell: `Copy-Item .env.example .env`)
+
+   Если у вас остался старый файл `project\.env` после переноса каталога — достаточно один раз скопировать его в корень как `.env`.
+
+2. Отредактировать **`.env` в корне**: задать `JWT_SECRET`, при необходимости `OPENROUTER_API_KEY` и прочие поля из примера.
 
 3. Установить зависимости (быстрый вариант с **pip**, если нет uv):
 
@@ -33,7 +38,7 @@
    uv pip compile pyproject.toml -o reqs.txt && uv pip install -r reqs.txt
    ```
 
-4. Запуск из каталога `project` (чтобы находился пакет `app`):
+4. Запуск приложения (рабочий каталог — корень репозитория):
 
    ```text
    uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -88,10 +93,10 @@
 - `POST /chat` при недоступном OpenRouter возвращает **502**, приложение живое.
 - `GET /chat/history` содержит пары user/assistant; `DELETE` очищает историю только выбранного пользователя.
 
-Просмотр SQLite (если файл `project/app.db`):
+Просмотр SQLite при `SQLITE_PATH=./app.db` (файл в корне репозитория):
 
 ```text
-sqlite3 project\app.db ".tables"
+sqlite3 app.db ".tables"
 ```
 
 ## Качество кода
@@ -99,7 +104,7 @@ sqlite3 project\app.db ".tables"
 Из корня репозитория:
 
 ```text
-python -m ruff check project/app
+python -m ruff check app
 ```
 
 Ожидаемый результат: **`All checks passed!`**.

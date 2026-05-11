@@ -1,7 +1,7 @@
 [project]
 name = "llm-p"
 version = "0.1.0"
-description = "FastAPI JWT, SQLite и прокси к OpenRouter"
+description = "FastAPI service with JWT auth, SQLite, and OpenRouter LLM proxy"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.112.0",
@@ -18,6 +18,9 @@ dependencies = [
   "bcrypt==4.3.0",
   "ruff>=0.14.14",
 ]
+
+[tool.uv]
+dev-dependencies = []
 
 [tool.ruff]
 line-length = 88
