@@ -1,0 +1,49 @@
+Пакет документации для разработки. Источник: Arch_TechDesign_FastApi.txt (версия спецификации см. в исходном файле).
+---
+
+## Эпик 3: Безопасность и утилиты
+
+### Цель
+
+Реализовать криптографические утилиты (JWT, bcrypt) и доменные исключения.
+
+### Технический дизайн
+
+1. **JWT:** `python-jose` с алгоритмом `HS256`.
+2. **Хеширование:** `passlib[bcrypt]` с `bcrypt=4.3.0`.
+3. **Ошибки:** Иерархия доменных исключений в `core/errors.py`.
+
+### Задача 3.1: Хеширование паролей
+
+**Acceptance Criteria:**
+- [ ] `hash_password(password: str) -> str` (passlib)
+- [ ] `verify_password(plain: str, hashed: str) -> bool`
+
+**Файлы:**
+- `app/core/security.py`
+
+### Задача 3.2: JWT функции
+
+**Acceptance Criteria:**
+- [ ] `create_access_token(data: dict) -> str`
+- [ ] Payload содержит: `sub` (user_id как str), `role`, `exp`, `iat`
+- [ ] `decode_token(token: str) -> dict` (валидация подписи и `exp`)
+- [ ] Используются `JWT_SECRET` и `JWT_ALG` из настроек
+
+**Файлы:**
+- `app/core/security.py`
+
+### Задача 3.3: Доменные исключения
+
+**Acceptance Criteria:**
+- [ ] Базовый класс `AppError` (наследник `Exception`)
+- [ ] `ConflictError` — 409 (email уже существует)
+- [ ] `UnauthorizedError` — 401 (неверный пароль или токен)
+- [ ] `ForbiddenError` — 403 (нет прав, задел на будущее)
+- [ ] `NotFoundError` — 404 (пользователь/сообщение не найдены)
+- [ ] `ExternalServiceError` — 502/503 (ошибка OpenRouter)
+
+**Файлы:**
+- `app/core/errors.py`
+
+---

@@ -1,0 +1,68 @@
+Пакет документации для разработки. Источник: Arch_TechDesign_FastApi.txt (версия спецификации см. в исходном файле).
+---
+
+## Эпик 6: HTTP слой (API endpoints, DI)
+
+### Цель
+
+Создать эндпоинты FastAPI с dependency injection и обработкой ошибок.
+
+### Технический дизайн
+
+1. **Dependencies:** сессии, репозитории, usecase, текущий пользователь.
+2. **OAuth2:** `OAuth2PasswordBearer` для Swagger.
+3. **Обработка ошибок:** глобальный exception handler.
+
+### Задача 6.1: Dependency Injection
+
+**Acceptance Criteria:**
+- [ ] `get_db_session()` — предоставляет `AsyncSession`
+- [ ] `get_user_repository(session)` — провайдер репозитория
+- [ ] `get_chat_message_repository(session)` — провайдер репозитория
+- [ ] `get_auth_usecase(user_repo)` — провайдер usecase
+- [ ] `get_chat_usecase(chat_repo, openrouter_client)` — провайдер usecase
+- [ ] `get_current_user_id(token=Depends(oauth2_scheme))` — декодирует JWT, возвращает `int(user_id)`
+  - При ошибке токена → `HTTPException(401)`
+
+**Файлы:**
+- `app/api/deps.py`
+
+### Задача 6.2: Эндпоинты авторизации
+
+**Acceptance Criteria:**
+- [ ] `POST /auth/register` → `RegisterRequest` → вызывает `auth_usecase.register()` → `UserPublic`
+- [ ] `POST /auth/login` → `OAuth2PasswordRequestForm` (username=email) → вызывает `auth_usecase.login()` → `TokenResponse`
+- [ ] `GET /auth/me` → `current_user_id` → вызывает `auth_usecase.get_profile()` → `UserPublic`
+- [ ] Преобразование доменных ошибок в HTTP:
+  - `ConflictError` → 409
+  - `UnauthorizedError` → 401
+  - `NotFoundError` → 404
+
+**Файлы:**
+- `app/api/routes_auth.py`
+
+### Задача 6.3: Эндпоинты чата
+
+**Acceptance Criteria:**
+- [ ] `POST /chat` → `ChatRequest` → вызывает `chat_usecase.ask()` → `ChatResponse`
+- [ ] `GET /chat/history` → `?limit` (опционально) → вызывает `chat_usecase.get_history()` → `list[ChatMessage]`
+- [ ] `DELETE /chat/history` → вызывает `chat_usecase.clear_history()` → 204 No Content
+- [ ] Все эндпоинты защищены через `current_user_id`
+
+**Файлы:**
+- `app/api/routes_chat.py`
+
+### Задача 6.4: Основное приложение и обработка ошибок
+
+**Acceptance Criteria:**
+- [ ] `create_app()` фабричная функция в `app/main.py`
+- [ ] Подключены роутеры: `auth_router`, `chat_router`
+- [ ] `GET /health` возвращает `{"status": "ok", "env": settings.ENV}`
+- [ ] При **startup**: создание таблиц через **`Base.metadata.create_all`**, но **совместимо с async-движком** (`create_async_engine` + `aiosqlite`): использовать **`lifespan`** (или аналог из FastAPI) и вызов через **`conn.run_sync(Base.metadata.create_all)`** или иной паттерн из **SQLAlchemy 2 Async** и **`ТЗ_0`**. Не применять к async engine синхронный вызов вида **`create_all(bind=engine)`**.
+- [ ] Глобальный exception handler для `AppError` → соответствующий HTTP-ответ
+- [ ] CORS настроен (опционально, из конфига)
+
+**Файлы:**
+- `app/main.py`
+
+---

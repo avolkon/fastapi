@@ -1,0 +1,29 @@
+Пакет документации для разработки. Источник: Arch_TechDesign_FastApi.txt (версия спецификации см. в исходном файле).
+---
+
+## Эпик 4: Внешний сервис (OpenRouter)
+
+### Цель
+
+Реализовать клиента для взаимодействия с OpenRouter API.
+
+### Технический дизайн
+
+1. **HTTP клиент:** `httpx.AsyncClient`.
+2. **Заголовки:** `Authorization: Bearer {api_key}`, `HTTP-Referer`, `X-Title`.
+3. **Модель по умолчанию:** `stepfun/step-3.5-flash:free`.
+
+### Задача 4.1: OpenRouter клиент
+
+**Acceptance Criteria:**
+- [ ] Класс `OpenRouterClient` с методом `chat_completion(messages, temperature)`
+- [ ] `messages` — список `[{"role": "user", "content": "..."}]`
+- [ ] Заголовки формируются из `settings.OPENROUTER_*`
+- [ ] Таймаут: 60 секунд
+- [ ] При ошибке HTTP (4xx/5xx) выбрасывается `ExternalServiceError`
+- [ ] При отсутствии `choices[0].message.content` — `ExternalServiceError`
+
+**Файлы:**
+- `app/services/openrouter_client.py`
+
+---

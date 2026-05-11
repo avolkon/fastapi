@@ -1,0 +1,62 @@
+Пакет документации для разработки. Источник: Arch_TechDesign_FastApi.txt (версия спецификации см. в исходном файле).
+---
+
+## Эпик 2: Слой данных (модели, репозитории)
+
+### Цель
+
+Реализовать асинхронный доступ к SQLite через SQLAlchemy, создать ORM-модели и репозитории.
+
+### Технический дизайн
+
+1. **Базовый класс:** `DeclarativeBase` из SQLAlchemy.
+2. **Движок:** Асинхронный `create_async_engine` с `aiosqlite`.
+3. **Сессии:** `async_sessionmaker` для фабрики сессий.
+4. **Модели:** `User` и `ChatMessage` с ForeignKey.
+
+### Задача 2.1: База данных и сессии
+
+**Acceptance Criteria:**
+- [ ] `app/db/base.py` содержит `Base = DeclarativeBase()`
+- [ ] `app/db/session.py` создаёт `engine` и `AsyncSessionLocal`
+- [ ] Строка подключения: `sqlite+aiosqlite:///{settings.SQLITE_PATH}`
+- [ ] `get_db()` dependency возвращает асинхронную сессию
+
+**Файлы:**
+- `app/db/base.py`
+- `app/db/session.py`
+
+### Задача 2.2: ORM-модели
+
+**Acceptance Criteria:**
+- [ ] Модель `User`: `id` (int, PK), `email` (str, unique, index), `password_hash` (str), `role` (str, default="user"), `created_at` (datetime)
+- [ ] Модель `ChatMessage`: `id` (int, PK), `user_id` (int, FK → users.id), `role` (str, "user" или "assistant"), `content` (str), `created_at` (datetime)
+- [ ] Связь `User.messages` через `relationship`
+- [ ] `created_at` для новых строк: предпочтительно **`default=lambda: datetime.now(timezone.utc)`** (или `server_default=func.now()` по соглашению команды); не использовать устаревающий **`datetime.utcnow`** в новом коде
+
+**Файлы:**
+- `app/db/models.py`
+
+### Задача 2.3: Репозиторий пользователей
+
+**Acceptance Criteria:**
+- [ ] `UserRepository` принимает `AsyncSession` в конструкторе
+- [ ] `get_by_email(email) -> User | None`
+- [ ] `get_by_id(user_id) -> User | None`
+- [ ] `create(email, password_hash, role) -> User` (с commit и refresh)
+
+**Файлы:**
+- `app/repositories/users.py`
+
+### Задача 2.4: Репозиторий сообщений
+
+**Acceptance Criteria:**
+- [ ] `ChatMessageRepository` принимает `AsyncSession` в конструкторе
+- [ ] `add_message(user_id, role, content) -> ChatMessage`
+- [ ] `get_last_n(user_id, n) -> list[ChatMessage]` (сортировка по created_at DESC)
+- [ ] `delete_all(user_id) -> None`
+
+**Файлы:**
+- `app/repositories/chat_messages.py`
+
+---

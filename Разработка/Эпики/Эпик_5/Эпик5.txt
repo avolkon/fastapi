@@ -1,0 +1,48 @@
+Пакет документации для разработки. Источник: Arch_TechDesign_FastApi.txt (версия спецификации см. в исходном файле).
+---
+
+## Эпик 5: Бизнес-логика (UseCases)
+
+### Цель
+
+Реализовать сценарии регистрации, логина и работы с чатом.
+
+### Технический дизайн
+
+1. **AuthUseCase:** регистрация (проверка уникальности, хеширование), логин (верификация + JWT).
+2. **ChatUseCase:** сбор контекста, вызов LLM, сохранение истории.
+
+### Задача 5.1: AuthUseCase
+
+**Acceptance Criteria:**
+- [ ] `register(email, password) -> UserPublic`
+  - Проверка: email не занят → иначе `ConflictError`
+  - Хеширование пароля, создание пользователя с role="user"
+- [ ] `login(email, password) -> TokenResponse`
+  - Если пользователь **не найден** или пароль **не совпадает** → **одинаково** `UnauthorizedError` (не раскрывать факт существования email; не отдавать `NotFoundError` на логин)
+  - При успехе: генерация JWT с `sub=str(user.id)`, `role=user.role`
+- [ ] `get_profile(user_id) -> UserPublic`
+  - Поиск пользователя → `NotFoundError`
+
+**Файлы:**
+- `app/usecases/auth.py`
+
+### Задача 5.2: ChatUseCase
+
+**Acceptance Criteria:**
+- [ ] `ask(user_id, prompt, system, max_history, temperature) -> ChatResponse`
+  - Получить историю (до `max_history` сообщений)
+  - Собрать `messages`: опционально system → история → текущий prompt
+  - Сохранить prompt в БД (role="user")
+  - Вызвать `openrouter_client.chat_completion(messages, temperature)`
+  - Сохранить ответ в БД (role="assistant")
+  - Вернуть ответ
+- [ ] `get_history(user_id, limit) -> list[ChatMessage]`
+  - Вызов репозитория с limit (по умолчанию 50)
+- [ ] `clear_history(user_id) -> None`
+  - Вызов `chat_message_repository.delete_all(user_id)`
+
+**Файлы:**
+- `app/usecases/chat.py`
+
+---
