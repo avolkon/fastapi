@@ -3,13 +3,15 @@
 Сервер на **FastAPI** с JWT, SQLite (async через SQLAlchemy + aiosqlite) и запросами к LLM через **OpenRouter**.
 
 - **Python**: 3.11+
-- **Зависимости**: см. `pyproject.toml` в этом каталоге; рекомендуемый установщик — [uv](https://github.com/astral-sh/uv).
+- **Зависимости**: см. `pyproject.toml` в этом каталоге. По методичке установка зависимостей и запуск сервера описаны **[uv](https://github.com/astral-sh/uv)** (`uv sync`, `uv run …`). Запасной путь только если uv недоступен — раздел **«Запасной путь: pip»**.
 
 Код приложения — пакет `app/` в каталоге **`llm_p/`** рядом с `pyproject.toml` (слои: api → usecases → repositories / services), см. **`llm_p/Структура_FastAPI_llm.txt`**.
 
 Документы курса: **`Разработка/ТЗ_0.txt`**, **`Разработка/Критерии_оценки_fastapi_llm.txt`**, а также архитектура и эпики в **`Разработка/`**.
 
 ## Пошаговая проверка окружения перед запуском (шаги 1–6)
+
+Ниже основной сценарий установки зависимостей и запуска — **[uv](https://github.com/astral-sh/uv)** из `PATH` (`uv sync`, `uv run …`). Если **uv недоступен**, используйте **только после шагов 1–3** запасной путь с **pip** — подраздел **«Запасной путь: pip»** в конце этого блока.
 
 Сначала один раз подставьте вместо **`<REPO>`** абсолютный путь к **корню вашего git-репозитория** (родитель каталога `llm_p`, не сам `llm_p`).
 
@@ -70,35 +72,55 @@ test -f pyproject.toml && test -f .env && echo "FILES_OK pyproject.toml .env" ||
 
 При необходимости используйте `python` вместо `python3`, если в системе так настроен интерпретатор 3.11+.
 
-### Шаг 4. Установка зависимостей через pip
+### Шаг 4. Установка зависимостей через **uv**
 
-Пакеты ставятся в **то окружение Python**, которое вызываете командой `python` / `python3` (глобально или из активированного venv). Перечень совпадает с типовой установкой из **«Быстрого старта»**: FastAPI, Uvicorn, SQLAlchemy, aiosqlite, Pydantic, JWT, bcrypt-стек, httpx, ruff и др.
+Команда **`uv sync`** читает зависимости из **`pyproject.toml`**, создаёт при необходимости виртуальное окружение **`.venv`** в каталоге `llm_p/` и ставит в него пакеты.
 
-Выполните **одну** команду из блока вашей ОС. Успех: в конце вывода есть строка **`DEPS_OK`**. (Сообщение pip о доступном обновлении можно игнорировать.)
+Выполните **одну** команду из блока вашей ОС (**после** шага 3 вы уже в `llm_p/` в том же сеансе, либо снова перейдите в `llm_p`). Успех: в конце вывода есть строка **`DEPS_OK`**.
 
-Рекомендуется виртуальное окружение (`python -m venv .venv` и активация) или **uv** — см. **«Быстрый старт»**; для быстрой проверки достаточно команд ниже.
+Не установлен **uv**: см. **[установку uv](https://docs.astral.sh/uv/getting-started/installation/)**, затем повторите шаг 4.
 
 #### Windows (PowerShell) — одна команда
 
 ```powershell
-Set-Location "<REPO>\llm_p"; python -m pip install fastapi "uvicorn[standard]" sqlalchemy aiosqlite "pydantic[email]" pydantic-settings "python-jose[cryptography]" cryptography "passlib[bcrypt]" httpx python-multipart greenlet "bcrypt==4.3.0" ruff; python -c "import fastapi, uvicorn, sqlalchemy; print('DEPS_OK')"
+Set-Location "<REPO>\llm_p"; uv sync; uv run python -c "import fastapi, uvicorn, sqlalchemy; print('DEPS_OK')"
 ```
 
 #### macOS (Terminal, bash/zsh) — одна команда
 
 ```bash
-cd "<REPO>/llm_p" && python3 -m pip install fastapi "uvicorn[standard]" sqlalchemy aiosqlite "pydantic[email]" pydantic-settings "python-jose[cryptography]" cryptography "passlib[bcrypt]" httpx python-multipart greenlet "bcrypt==4.3.0" ruff && python3 -c "import fastapi, uvicorn, sqlalchemy; print('DEPS_OK')"
+cd "<REPO>/llm_p" && uv sync && uv run python -c "import fastapi, uvicorn, sqlalchemy; print('DEPS_OK')"
 ```
-
-Если `python3` не найден, замените оба вхождения на `python` (интерпретатор 3.11+).
 
 #### Linux (bash) — одна команда
 
 ```bash
-cd "<REPO>/llm_p" && python3 -m pip install fastapi "uvicorn[standard]" sqlalchemy aiosqlite "pydantic[email]" pydantic-settings "python-jose[cryptography]" cryptography "passlib[bcrypt]" httpx python-multipart greenlet "bcrypt==4.3.0" ruff && python3 -c "import fastapi, uvicorn, sqlalchemy; print('DEPS_OK')"
+cd "<REPO>/llm_p" && uv sync && uv run python -c "import fastapi, uvicorn, sqlalchemy; print('DEPS_OK')"
 ```
 
-При необходимости замените `python3` на `python`.
+##### Альтернатива для шага 4: `uv venv`, `uv pip compile`, `uv pip install`
+
+В **`Разработка/Критерии_оценки_fastapi_llm.txt`** зафиксированы установка через **`uv venv`** и связка **`uv pip compile`** + **`uv pip install`**. По смыслу это тот же набор пакетов из **`pyproject.toml`**, что даёт **`uv sync`**; ниже — эквивалентный вариант (из **`llm_p/`**). Файл **`reqs.txt`** генерируется локально; при желании добавьте его в **`.gitignore`**, если не хотите коммитить лок.
+
+#### Windows (PowerShell)
+
+```powershell
+Set-Location "<REPO>\llm_p"
+uv venv
+uv pip compile pyproject.toml -o reqs.txt
+uv pip install -r reqs.txt
+uv run python -c "import fastapi, uvicorn, sqlalchemy; print('DEPS_OK')"
+```
+
+#### macOS / Linux
+
+```bash
+cd "<REPO>/llm_p"
+uv venv
+uv pip compile pyproject.toml -o reqs.txt
+uv pip install -r reqs.txt
+uv run python -c "import fastapi, uvicorn, sqlalchemy; print('DEPS_OK')"
+```
 
 ### Шаг 5. Запуск HTTP-сервера (Uvicorn)
 
@@ -111,24 +133,20 @@ cd "<REPO>/llm_p" && python3 -m pip install fastapi "uvicorn[standard]" sqlalche
 #### Windows (PowerShell) — одна команда
 
 ```powershell
-Set-Location "<REPO>\llm_p"; python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+Set-Location "<REPO>\llm_p"; uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 #### macOS (Terminal, bash/zsh) — одна команда
 
 ```bash
-cd "<REPO>/llm_p" && python3 -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+cd "<REPO>/llm_p" && uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
-
-При необходимости замените `python3` на `python`.
 
 #### Linux (bash) — одна команда
 
 ```bash
-cd "<REPO>/llm_p" && python3 -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+cd "<REPO>/llm_p" && uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
-
-При необходимости замените `python3` на `python`.
 
 ### Шаг 6. Проверка `GET /health`
 
@@ -154,7 +172,35 @@ curl -sS "http://127.0.0.1:8000/health"
 curl -sS "http://127.0.0.1:8000/health"
 ```
 
-После успешных шагов 5–6 раздел **«Быстрый старт»** можно использовать как справочник (копирование `.env.example`, вариант с **uv**, приёмка со скриншотами). Если зависимости уже установлены на **шаге 4**, **пункт 3** в «Быстром старте» с повторным `pip install` можно не выполнять; **пункт 4** дублирует **шаг 5** при запуске из `llm_p`.
+После успешных шагов 5–6 раздел **«Быстрый старт»** можно использовать как справочник (копирование `.env.example`, приёмка со скриншотами). Если зависимости уже синхронизированы на **шаге 4**, **`uv sync`** в «Быстром старте» можно не повторять; пункт про запуск дублирует **шаг 5**.
+
+### Запасной путь: **pip** (без uv)
+
+Использовать только если **uv установить нельзя**. Перечень пакетов совпадает с **`pyproject.toml`**.
+
+#### Windows (PowerShell)
+
+```powershell
+Set-Location "<REPO>\llm_p"; python -m pip install fastapi "uvicorn[standard]" sqlalchemy aiosqlite "pydantic[email]" pydantic-settings "python-jose[cryptography]" cryptography "passlib[bcrypt]" httpx python-multipart greenlet "bcrypt==4.3.0" ruff; python -c "import fastapi, uvicorn, sqlalchemy; print('DEPS_OK')"
+```
+
+Запуск сервера тем же интерпретатором, где стоят зависимости:
+
+```powershell
+Set-Location "<REPO>\llm_p"; python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+#### macOS / Linux
+
+```bash
+cd "<REPO>/llm_p" && python3 -m pip install fastapi "uvicorn[standard]" sqlalchemy aiosqlite "pydantic[email]" pydantic-settings "python-jose[cryptography]" cryptography "passlib[bcrypt]" httpx python-multipart greenlet "bcrypt==4.3.0" ruff && python3 -c "import fastapi, uvicorn, sqlalchemy; print('DEPS_OK')"
+```
+
+```bash
+cd "<REPO>/llm_p" && python3 -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+При необходимости замените `python3` на `python` (интерпретатор 3.11+).
 
 ## Быстрый старт
 
@@ -171,21 +217,17 @@ curl -sS "http://127.0.0.1:8000/health"
 
 2. Отредактировать **`.env`** в этом же каталоге: задать `JWT_SECRET`, при необходимости `OPENROUTER_API_KEY` и прочие поля из примера.
 
-3. Установить зависимости (**уже находясь в `llm_p/`**; быстрый вариант с **pip**, если нет uv):
+3. Установить зависимости через **uv** (**рабочий каталог — `llm_p/`**):
 
    ```text
-   python -m pip install fastapi "uvicorn[standard]" sqlalchemy aiosqlite
-   python -m pip install "pydantic[email]" pydantic-settings "python-jose[cryptography]"
-   python -m pip install cryptography "passlib[bcrypt]" httpx python-multipart greenlet "bcrypt==4.3.0" ruff
+   uv sync
    ```
 
-   С **uv** из **`llm_p/`** (пример):
+   При необходимости обновить окружение после изменений в `pyproject.toml` — снова **`uv sync`**.
 
-   ```text
-   cd llm_p
-   uv venv
-   uv pip compile pyproject.toml -o reqs.txt && uv pip install -r reqs.txt
-   ```
+   **Формулировка из критериев оценки (эквивалент установки из `pyproject.toml`):** из **`llm_p/`** выполните **`uv venv`**, затем **`uv pip compile pyproject.toml -o reqs.txt`** и **`uv pip install -r reqs.txt`**, затем проверку импортов как в **шаге 4** (`uv run python -c "… DEPS_OK"`).
+
+   **Запасной путь (без uv):** см. раздел **«Запасной путь: pip»** выше или выполните вручную `python -m pip install …` по списку из **`pyproject.toml`**.
 
 4. Запуск приложения (**рабочий каталог — `llm_p/`**):
 
@@ -193,7 +235,7 @@ curl -sS "http://127.0.0.1:8000/health"
    uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
-   Либо из **`llm_p/`**: `python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`.
+   Только если ставили зависимости через **pip** без uv: активируйте своё окружение и выполните `python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`.
 
 5. Документация Swagger: открыть `http://127.0.0.1:8000/docs`.
 
@@ -218,18 +260,57 @@ curl -sS "http://127.0.0.1:8000/health"
 - Ответ провайдера LLM переводится в **502** с безопасным текстом клиенту; токены OpenRouter в ответах не попадают.
 - Пароли хешируются **bcrypt** (passlib); в логи не записываются.
 
-## Приёмка: скриншоты (папка `./screenshots/`)
+## Приёмка: скриншоты (`screenshots/` в корне репозитория)
 
-Под критерии курса сделайте и положите в репозиторий изображения (рекомендуемые имена):
+Изображения ниже встроены из папки **`screenshots/`** (путь от этого файла: **`../screenshots/`**). По критериям курса на скриншоте регистрации должен быть виден email в формате **`student_surname@email.com`** (или та же схема с вашей фамилией и доменом `@email.com` — уточните у преподавателя).
 
-- `screenshots/01-register.png` — регистрация с email вида **`student_surname@email.com`**
-- `screenshots/02-login-token.png` — логин и полученный JWT
-- `screenshots/03-swagger-authorize.png` — кнопка **Authorize** в Swagger и ввод Bearer
-- `screenshots/04-chat-post.png` — успешный `POST /chat`
-- `screenshots/05-history-get.png` — `GET /chat/history`
-- `screenshots/06-history-delete.png` — `DELETE /chat/history` (можно код `204`)
+Перед публикаацией замажьте чувствительные части JWT и ключей провайдера.
 
-Перед публикацией замажьте чувствительные части токена или ключа провайдера.
+### Обязательные по методичке
+
+#### 1. Регистрация — `POST /auth/register`
+
+![Регистрация: POST /auth/register, email student_surname@email.com](../screenshots/01-register.png)
+
+#### 2. Логин и JWT — `POST /auth/login`
+
+![Логин и ответ с access_token](../screenshots/02-login-token.png)
+
+#### 3. Авторизация в Swagger — кнопка Authorize
+
+![Swagger UI: Authorize, Bearer-токен](../screenshots/03-swagger-authorize.png)
+
+#### 4. Чат — `POST /chat`
+
+![Успешный POST /chat](../screenshots/04-chat-post.png)
+
+#### 5. История — `GET /chat/history`
+
+![GET /chat/history, список сообщений](../screenshots/05-history-get.png)
+
+#### 6. Очистка истории — `DELETE /chat/history`
+
+![DELETE /chat/history](../screenshots/06-history-delete.png)
+
+### Дополнительные скриншоты (другие ракурсы)
+
+![Обзор OpenAPI / Swagger](../screenshots/00-openapi-swagger-overview.png)
+
+![POST /chat: тело запроса в редакторе](../screenshots/04a-chat-request-body-editor.png)
+
+![POST /chat: документация ответа](../screenshots/04b-chat-endpoint-response-docs.png)
+
+![GET /chat/history: параметры](../screenshots/05a-chat-history-parameters.png)
+
+![GET /chat/history: выполнение запроса](../screenshots/05b-chat-history-execute-request.png)
+
+![GET /chat/history: альтернативный ответ](../screenshots/05c-chat-history-response-alt.png)
+
+![GET /auth/me: профиль](../screenshots/07-auth-me-profile.png)
+
+![GET /auth/me: пример схемы](../screenshots/07a-auth-me-schema-example.png)
+
+![История пуста после DELETE](../screenshots/08-chat-history-empty-after-delete.png)
 
 ## Ручной чеклист перед сдачей
 
@@ -251,11 +332,11 @@ sqlite3 app.db ".tables"
 
 ## Качество кода
 
-Из каталога **`llm_p/`**:
+Из каталога **`llm_p/`** (после **`uv sync`**):
 
 ```text
 cd llm_p
-python -m ruff check app
+uv run ruff check app
 ```
 
-Ожидаемый результат: **`All checks passed!`**.
+Ожидаемый результат: **`All checks passed!`**. Если используете только **pip**, запустите `python -m ruff check app` в том же окружении, куда ставили зависимости.

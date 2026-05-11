@@ -222,3 +222,7 @@ __marimo__/
 
 # Local SQLite DB (корень или llm_p/)
 **/app.db
+
+# Windows Explorer / thumbnails (часто появляются в папках со скриншотами)
+**/desktop.ini
+Thumbs.db
