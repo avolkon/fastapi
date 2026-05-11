@@ -13,14 +13,14 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import settings
 
-_project_root = Path(__file__).resolve().parent.parent.parent
+_app_root = Path(__file__).resolve().parent.parent.parent
 
 if settings.sqlite_path.startswith("sqlite+"):
     _engine_url = settings.sqlite_path
 else:
     _db_path = Path(settings.sqlite_path)
     if not _db_path.is_absolute():
-        _db_path = (_project_root / _db_path).resolve()
+        _db_path = (_app_root / _db_path).resolve()
     _engine_url = f"sqlite+aiosqlite:///{_db_path.as_posix()}"
 
 engine = create_async_engine(_engine_url, echo=False)

@@ -41,8 +41,7 @@ async def chat_history(
 ) -> list[ChatHistoryItem]:
     """Последние сообщения пользователя в хронологическом порядке."""
 
-    rows = await chat.get_history(uid, limit)
-    return [ChatHistoryItem.model_validate(r) for r in rows]
+    return await chat.get_history(uid, limit)
 
 
 @router.delete("/history", status_code=status.HTTP_204_NO_CONTENT)

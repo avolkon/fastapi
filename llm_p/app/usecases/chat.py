@@ -2,8 +2,8 @@
 Сценарии работы чата и историей сообщений пользователя.
 """
 
-from app.db.models import ChatMessage
 from app.repositories.chat_messages import ChatMessageRepository
+from app.schemas.chat import ChatHistoryItem
 from app.services.openrouter_client import OpenRouterClient
 
 
@@ -46,12 +46,21 @@ class ChatUseCase:
         await self._messages.add_message(user_id, "assistant", answer)
         return answer
 
-    async def get_history(self, user_id: int, limit: int) -> list[ChatMessage]:
+    async def get_history(self, user_id: int, limit: int) -> list[ChatHistoryItem]:
         """Возвращает последние limit сообщений в порядке «старый → новый»."""
 
         if limit <= 0:
             return []
-        return await self._messages.get_last_n(user_id, limit)
+        rows = await self._messages.get_last_n(user_id, limit)
+        return [
+            ChatHistoryItem(
+                id=r.id,
+                role=r.role,
+                content=r.content,
+                created_at=r.created_at,
+            )
+            for r in rows
+        ]
 
     async def clear_history(self, user_id: int) -> None:
         """Полная очистка истории пользователя."""
