@@ -56,7 +56,12 @@ class OpenRouterClient:
             "temperature": temperature,
         }
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        # HTTP/2 на части окружений даёт LocalProtocolError в httpcore;
+        # OpenRouter стабильнее по HTTP/1.1.
+        async with httpx.AsyncClient(
+            timeout=self._timeout,
+            http2=False,
+        ) as client:
             try:
                 response = await client.post(
                     f"{self._base}/chat/completions",
