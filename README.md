@@ -19,8 +19,8 @@
 
 Примеры:
 
-- Windows: `C:\Users\you\Documents\GitHub\pymephi\fastapi`
-- macOS / Linux: `/home/you/src/fastapi` или `$HOME/Documents/GitHub/pymephi/fastapi`
+- Windows: `C:\Users\Documents\GitHub\fastapi`
+- macOS / Linux: `/home/you/src/fastapi` или `$HOME/Documents/GitHub/fastapi`
 
 ### Шаги 1–3
 
