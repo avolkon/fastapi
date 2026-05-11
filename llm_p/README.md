@@ -9,6 +9,67 @@
 
 Документы курса: **`Разработка/ТЗ_0.txt`**, **`Разработка/Критерии_оценки_fastapi_llm.txt`**, а также архитектура и эпики в **`Разработка/`**.
 
+## Пошаговая проверка окружения перед запуском (шаги 1–3)
+
+Сначала один раз подставьте вместо **`<REPO>`** абсолютный путь к **корню вашего git-репозитория** (родитель каталога `llm_p`, не сам `llm_p`).
+
+Примеры:
+
+- Windows: `C:\Users\you\Documents\GitHub\pymephi\fastapi`
+- macOS / Linux: `/home/you/src/fastapi` или `$HOME/Documents/GitHub/pymephi/fastapi`
+
+Выполните **в одном сеансе терминала подряд три команды** из блока вашей ОС. Успех: в выводе есть **`DIR_OK`**, **`PYTHON_OK …`**, **`FILES_OK …`**.
+
+### Windows (PowerShell) — три команды подряд
+
+```powershell
+Set-Location "<REPO>\llm_p"; Write-Output "DIR_OK $(Get-Location)"
+```
+
+```powershell
+python -c "import sys; v=sys.version_info; assert v>=(3,11), f'Need Python 3.11+, got {v.major}.{v.minor}'; print(f'PYTHON_OK {v.major}.{v.minor}.{v.micro}')"
+```
+
+```powershell
+foreach ($f in 'pyproject.toml','.env') { if (-not (Test-Path -LiteralPath $f)) { throw "Missing file: $f" } }; Write-Output 'FILES_OK pyproject.toml .env'
+```
+
+*(После первой команды текущая папка — `llm_p`; вторая и третья выполняются уже в ней.)*
+
+### macOS (Terminal, bash/zsh) — три команды подряд
+
+```bash
+cd "<REPO>/llm_p" && echo "DIR_OK $(pwd)"
+```
+
+```bash
+python3 -c "import sys; v=sys.version_info; assert v>=(3,11), f'Need Python 3.11+, got {v.major}.{v.minor}'; print(f'PYTHON_OK {v.major}.{v.minor}.{v.micro}')"
+```
+
+```bash
+test -f pyproject.toml && test -f .env && echo "FILES_OK pyproject.toml .env" || { echo "Missing file"; exit 1; }
+```
+
+Если команда `python3` не найдена, замените её на `python` (при условии, что это Python 3.11+).
+
+### Linux (bash) — три команды подряд
+
+```bash
+cd "<REPO>/llm_p" && echo "DIR_OK $(pwd)"
+```
+
+```bash
+python3 -c "import sys; v=sys.version_info; assert v>=(3,11), f'Need Python 3.11+, got {v.major}.{v.minor}'; print(f'PYTHON_OK {v.major}.{v.minor}.{v.micro}')"
+```
+
+```bash
+test -f pyproject.toml && test -f .env && echo "FILES_OK pyproject.toml .env" || { echo "Missing file"; exit 1; }
+```
+
+При необходимости используйте `python` вместо `python3`, если в системе так настроен интерпретатор 3.11+.
+
+Дальше перейдите к разделу **«Быстрый старт»** (зависимости, `uvicorn`).
+
 ## Быстрый старт
 
 Дальше команды выполняйте из каталога **`llm_p/`** (там же `pyproject.toml` и каталог `app`).
