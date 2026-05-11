@@ -15,7 +15,7 @@
   - Требования (Python 3.11+)
   - Установку через **`uv`** (по **`ТЗ_0`**: `uv venv`, цепочка **`uv pip compile`** / **`uv pip install`**; допустим также описанный в README вариант с **`pip install -e .`**, если он воспроизводимо поднимает зависимости)
   - Настройку `.env` (пример)
-  - Запуск: `uv run uvicorn app.main:app --reload`
+  - Запуск: из **`llm_p/`** — `uv run uvicorn app.main:app --reload`
   - Ссылку на Swagger: `http://localhost:8000/docs`
 - [ ] Скриншоты (в README):
   - Регистрация пользователя с email **`student_surname@email.com`**
@@ -26,7 +26,7 @@
   - `DELETE /chat/history` (успешное удаление)
 
 **Файлы:**
-- `README.md`
+- `llm_p/README.md`
 - Папка `screenshots/` (если скриншоты отдельно)
 
 ### Задача 7.2: Проверка качества кода
@@ -37,8 +37,9 @@
 - [ ] Нет `print()` в production-коде
 - [ ] Нет закомментированного кода в финальной версии
 
-**Команда:**
+**Команда** (рабочий каталог **`llm_p/`**):
 ```bash
+cd llm_p
 uv run ruff check app/
 uv run ruff format app/
 ```

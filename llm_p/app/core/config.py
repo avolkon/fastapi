@@ -10,7 +10,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _resolve_env_file() -> Path:
-    """Возвращает путь к `.env` в корне репозитория (рядом с `pyproject.toml`)."""
+    """Путь к файлу ``.env``.
+
+    Лежит рядом с ``pyproject.toml`` (три каталога выше ``core``).
+    """
 
     return Path(__file__).resolve().parent.parent.parent / ".env"
 

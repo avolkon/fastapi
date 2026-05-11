@@ -220,5 +220,5 @@ __marimo__/
 # Cursor (локальные правила IDE, не в репозиторий)
 .cursor/
 
-# Local SQLite DB
-app.db
+# Local SQLite DB (корень или llm_p/)
+**/app.db
