@@ -1,0 +1,602 @@
+# Архитектурная спецификация проекта (Технический дизайн)
+
+**Проект:** Защищённый API для взаимодействия с LLM через OpenRouter  
+**Версия:** 1.1  
+**Статус документа:** архитектурная и техническая спецификация **утверждена** для реализации. **Готовность продукта к сдаче** определяется закрытием чеклистов (в первую очередь эпик 7), а не этой строкой статуса.
+
+Документ описывает целевую архитектуру серверного приложения на FastAPI, предоставляющего защищённый API для взаимодействия с большой языковой моделью (LLM) через сервис OpenRouter, и синхронизирован с `ТЗ_0.txt` и `Критерии_оценки_fastapi_llm.txt`.
+
+**Про чеклисты в эпиках:** в задачах ниже пункты имеют вид `- [ ]` — **реквизиты готовности**; по мере реализации в коде отмечайте выполнение `- [x]`, чтобы документ отражал фактическое состояние репозитория.
+
+---
+
+## Согласованные архитектурные решения
+
+| Пункт ТЗ / черновика | Утверждённая реализация | Обоснование |
+|----------------------|-------------------------|-------------|
+| JWT payload содержит только `sub`, `exp`, `iat` | **Полный payload:** `sub`, `role`, `exp`, `iat` | ТЗ в разделе `core/security.py` явно требует поле `role` в токене |
+| Доменные ошибки без `ForbiddenError` | **Включена `ForbiddenError`** для соответствия ТЗ (даже если в MVP не используется) | ТЗ перечисляет "запрещено (нет прав)" среди доменных исключений |
+| Структура корня не специфицирована | **Корневой пакет `app/`** на уровне запуска `uvicorn app.main:app` | Критерии оценивают наличие каталогов `app/`, `core/`, `db/` и т.д. |
+| Модель OpenRouter не зафиксирована | **`stepfun/step-3.5-flash:free`** как значение по умолчанию | Критерии оценки явно проверяют использование этой модели |
+
+---
+
+## Общая архитектура
+
+### 1. Контракты между компонентами
+
+#### Контракт API слой → UseCase слой
+
+```python
+# Интерфейс UseCase (неявный, через Dependency Injection)
+interface AuthUseCase:
+    async def register(email: str, password: str) -> UserPublic
+    async def login(email: str, password: str) -> TokenResponse
+    async def get_profile(user_id: int) -> UserPublic
+
+interface ChatUseCase:
+    async def ask(
+        user_id: int,
+        prompt: str,
+        system: str | None,
+        max_history: int,
+        temperature: float
+    ) -> ChatResponse
+    async def get_history(user_id: int, limit: int | None) -> list[ChatMessage]
+    async def clear_history(user_id: int) -> None
+```
+
+**Обязательные правила:**
+
+- API слой **не вызывает репозитории напрямую**.
+- API слой **не содержит SQLAlchemy-кода**.
+- UseCase слой **не выбрасывает HTTPException** — только доменные исключения.
+- UseCase слой **не зависит от FastAPI** (нет импортов `fastapi`, `Request`, `Depends`).
+
+#### Контракт UseCase слой → Repository слой
+
+```python
+# Интерфейс UserRepository
+interface UserRepository:
+    async def get_by_email(email: str) -> User | None
+    async def get_by_id(user_id: int) -> User | None
+    async def create(email: str, password_hash: str, role: str) -> User
+
+# Интерфейс ChatMessageRepository
+interface ChatMessageRepository:
+    async def add_message(user_id: int, role: str, content: str) -> ChatMessage
+    async def get_last_n(user_id: int, n: int) -> list[ChatMessage]
+    async def delete_all(user_id: int) -> None
+```
+
+**Обязательные правила:**
+
+- Репозитории **не хешируют пароли**.
+- Репозитории **не вызывают OpenRouter**.
+- Репозитории **не содержат бизнес-логику** (только CRUD/ORM).
+- Репозитории **не импортируют `fastapi` и не выбрасывают HTTPException**.
+
+#### Контракт UseCase слой → Service слой
+
+```python
+# Интерфейс OpenRouterClient
+interface OpenRouterClient:
+    async def chat_completion(
+        messages: list[dict[str, str]],
+        temperature: float
+    ) -> str
+```
+
+**Обязательные правила:**
+
+- Сервис **не обращается к базе данных**.
+- Сервис **не знает о пользователях** (не принимает `user_id`).
+- При ошибках внешнего API сервис выбрасывает **`ExternalServiceError`**.
+
+#### Контракт JWT (Auth Service → всё приложение)
+
+```python
+# JWT Payload interface
+interface JWTToken:
+    sub: str          # user_id (строка, для совместимости)
+    role: str         # "user" | "admin"
+    iat: int          # issued at, Unix timestamp
+    exp: int          # expires at, Unix timestamp
+```
+
+**Обязательные правила:**
+
+- JWT выпускается только **при успешном логине** (use case).
+- Валидация JWT происходит **в слое dependency (`deps.py`)**.
+- При невалидном токене dependency выбрасывает **`HTTPException(401)`**.
+- При декодировании проверяются: подпись, `exp`, наличие `sub` и `role`.
+
+---
+
+## 2. Диаграмма последовательности (основной сценарий)
+
+```text
+Клиент         API (/auth)    UseCase(Auth)   Repository    API (/chat)    UseCase(Chat)   Repository    OpenRouter
+  │                 │               │              │              │               │              │             │
+  │ POST /register  │               │              │              │               │              │             │
+  ├────────────────>│               │              │              │               │              │             │
+  │                 │ register()    │              │              │               │              │             │
+  │                 ├──────────────>│              │              │               │              │             │
+  │                 │               │ get_by_email │              │               │              │             │
+  │                 │               ├─────────────>│              │               │              │             │
+  │                 │               │<─────────────┤              │               │              │             │
+  │                 │               │ create()     │              │               │              │             │
+  │                 │               ├─────────────>│              │               │              │             │
+  │                 │               │<─────────────┤              │               │              │             │
+  │                 │<──────────────┤              │              │               │              │             │
+  │<────────────────┤   UserPublic  │              │              │               │              │             │
+  │                 │               │              │              │               │              │             │
+  │ POST /login     │               │              │              │               │              │             │
+  ├────────────────>│               │              │              │               │              │             │
+  │                 │ login()       │              │              │               │              │             │
+  │                 ├──────────────>│              │              │               │              │             │
+  │                 │               │ get_by_email │              │               │              │             │
+  │                 │               ├─────────────>│              │               │              │             │
+  │                 │               │<─────────────┤              │               │              │             │
+  │                 │               │ create_token() [security]   │               │              │             │
+  │                 │<──────────────┤              │              │               │              │             │
+  │<────────────────┤  TokenResponse│              │              │               │              │             │
+  │                 │               │              │              │               │              │             │
+  │ POST /chat      │               │              │              │               │              │             │
+  │ (Bearer Token)  │               │              │              │               │              │             │
+  ├──────────────────────────────────────────────────────────────>│               │              │             │
+  │                 │               │              │              │ ask()         │              │             │
+  │                 │               │              │              ├──────────────>│              │             │
+  │                 │               │              │              │               │ get_last_n() │             │
+  │                 │               │              │              │               ├─────────────>│             │
+  │                 │               │              │              │               │<─────────────┤             │
+  │                 │               │              │              │               │ add_message  │             │
+  │                 │               │              │              │               │ (user prompt)│             │
+  │                 │               │              │              │               ├─────────────>│             │
+  │                 │               │              │              │               │              │ chat_completion
+  │                 │               │              │              │               ├────────────────────────────>│
+  │                 │               │              │              │               │<────────────────────────────┤
+  │                 │               │              │              │               │ add_message  │             │
+  │                 │               │              │              │               │ (assistant)  │             │
+  │                 │               │              │              │               ├─────────────>│             │
+  │                 │               │              │              │<──────────────┤              │             │
+  │<──────────────────────────────────────────────────────────────┤  ChatResponse │              │             │
+  │                 │               │              │              │               │              │             │
+  │ GET /chat/history (Token)       │              │              │               │              │             │
+  ├──────────────────────────────────────────────────────────────>│               │              │             │
+  │                 │               │              │              │ get_history() │              │             │
+  │                 │               │              │              ├──────────────>│              │             │
+  │                 │               │              │              │               │ get_last_n() │             │
+  │                 │               │              │              │               ├─────────────>│             │
+  │                 │               │              │              │               │<─────────────┤             │
+  │<──────────────────────────────────────────────────────────────┤  list[msg]    │              │             │
+```
+
+---
+
+## 3. Схема данных
+
+| Компонент | Хранилище | Данные | TTL | Ключ / Таблица |
+|-----------|-----------|--------|-----|----------------|
+| Приложение | SQLite (aiosqlite) | users: id, email, password_hash, role, created_at | бессрочно | таблица `users` |
+| Приложение | SQLite (aiosqlite) | chat_messages: id, user_id, role, content, created_at | бессрочно | таблица `chat_messages` |
+| Приложение | Файловая система | база данных `app.db` | бессрочно | `./app.db` (из настроек) |
+
+**Связи:**
+- `chat_messages.user_id` → `users.id` (внешний ключ; в ORM задать **`ondelete="CASCADE"`** у FK, чтобы при удалении пользователя удалялись его сообщения — согласовано с каскадом в спецификации)
+
+**Индексы:**
+- `users.email` — уникальный индекс
+- `chat_messages.user_id`, `chat_messages.created_at` — для быстрой выборки истории
+
+---
+
+## 4. Протоколы взаимодействия
+
+| A → B | Протокол | Данные | Порт/URL |
+|-------|----------|--------|----------|
+| Клиент → FastAPI | HTTP/HTTPS | JSON, form-data (OAuth2) | 8000 |
+| FastAPI → SQLite | aiosqlite (SQLite3 wire) | SQL | файл `app.db` |
+| FastAPI → OpenRouter | HTTPS | JSON | `https://openrouter.ai/api/v1/chat/completions` |
+
+---
+
+## 5. Зависимости между эпиками
+
+```text
+Эпик 1: Инфраструктура и конфигурация
+    ↓
+Эпик 2: Слой данных (модели, репозитории)
+    ↓
+Эпик 3: Безопасность и утилиты (JWT, bcrypt, errors)
+    ↓
+Эпик 4: Внешний сервис (OpenRouter клиент)
+    ↓
+Эпик 5: Бизнес-логика (UseCases)
+    ↓
+Эпик 6: HTTP слой (API endpoints, DI)
+    ↓
+Эпик 7: Документация, тестирование, приёмка
+```
+
+---
+
+# Эпики
+
+## Эпик 1: Инфраструктура и конфигурация
+
+### Цель
+
+Создать базовую структуру проекта с управлением зависимостями через `uv` и конфигурацией через Pydantic Settings.
+
+### Технический дизайн
+
+1. **Инструменты:** `uv` для управления зависимостями, `ruff` для линтинга.
+2. **Структура:** Модульная структура `app/` с подпапками по слоям.
+3. **Конфигурация:** Чтение `.env` через `pydantic-settings`, единый объект `settings`.
+
+### Задача 1.1: Инициализация проекта и зависимости
+
+**Acceptance Criteria:**
+- [ ] `uv init` выполнен, создан `pyproject.toml`
+- [ ] Зависимости из ТЗ добавлены в `pyproject.toml`
+- [ ] `uv venv` создаёт виртуальное окружение
+- [ ] `uv pip compile` и `uv pip install` работают без ошибок
+- [ ] `ruff check` проходит на пустом проекте
+
+**Файлы:**
+- `pyproject.toml`
+- `README.md`
+- `.gitignore`
+
+### Задача 1.2: Создание файловой структуры
+
+**Acceptance Criteria:**
+- [ ] Созданы директории: `app/`, `app/core/`, `app/db/`, `app/schemas/`, `app/repositories/`, `app/services/`, `app/usecases/`, `app/api/`
+- [ ] В каждой директории создан `__init__.py`
+- [ ] Создан `app/main.py` (точка входа)
+
+**Файлы:**
+- Все `__init__.py` в указанных директориях
+
+### Задача 1.3: Конфигурация приложения
+
+**Acceptance Criteria:**
+- [ ] Класс `Settings` в `app/core/config.py` читает переменные из `.env`
+- [ ] Поля конфигурации: `APP_NAME`, `ENV`, `JWT_SECRET`, `JWT_ALG`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `SQLITE_PATH`, `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `OPENROUTER_SITE_URL`, `OPENROUTER_APP_NAME`
+- [ ] Создан `.env.example` с примерами переменных
+- [ ] `settings` — единственный экземпляр, импортируемый в других модулях
+
+**Файлы:**
+- `app/core/config.py`
+- `.env.example`
+
+---
+
+## Эпик 2: Слой данных (модели, репозитории)
+
+### Цель
+
+Реализовать асинхронный доступ к SQLite через SQLAlchemy, создать ORM-модели и репозитории.
+
+### Технический дизайн
+
+1. **Базовый класс:** `DeclarativeBase` из SQLAlchemy.
+2. **Движок:** Асинхронный `create_async_engine` с `aiosqlite`.
+3. **Сессии:** `async_sessionmaker` для фабрики сессий.
+4. **Модели:** `User` и `ChatMessage` с ForeignKey.
+
+### Задача 2.1: База данных и сессии
+
+**Acceptance Criteria:**
+- [ ] `app/db/base.py` содержит `Base = DeclarativeBase()`
+- [ ] `app/db/session.py` создаёт `engine` и `AsyncSessionLocal`
+- [ ] Строка подключения: `sqlite+aiosqlite:///{settings.SQLITE_PATH}`
+- [ ] `get_db()` dependency возвращает асинхронную сессию
+
+**Файлы:**
+- `app/db/base.py`
+- `app/db/session.py`
+
+### Задача 2.2: ORM-модели
+
+**Acceptance Criteria:**
+- [ ] Модель `User`: `id` (int, PK), `email` (str, unique, index), `password_hash` (str), `role` (str, default="user"), `created_at` (datetime)
+- [ ] Модель `ChatMessage`: `id` (int, PK), `user_id` (int, FK → users.id), `role` (str, "user" или "assistant"), `content` (str), `created_at` (datetime)
+- [ ] Связь `User.messages` через `relationship`
+- [ ] `created_at` для новых строк: предпочтительно **`default=lambda: datetime.now(timezone.utc)`** (или `server_default=func.now()` по соглашению команды); не использовать устаревающий **`datetime.utcnow`** в новом коде
+
+**Файлы:**
+- `app/db/models.py`
+
+### Задача 2.3: Репозиторий пользователей
+
+**Acceptance Criteria:**
+- [ ] `UserRepository` принимает `AsyncSession` в конструкторе
+- [ ] `get_by_email(email) -> User | None`
+- [ ] `get_by_id(user_id) -> User | None`
+- [ ] `create(email, password_hash, role) -> User` (с commit и refresh)
+
+**Файлы:**
+- `app/repositories/users.py`
+
+### Задача 2.4: Репозиторий сообщений
+
+**Acceptance Criteria:**
+- [ ] `ChatMessageRepository` принимает `AsyncSession` в конструкторе
+- [ ] `add_message(user_id, role, content) -> ChatMessage`
+- [ ] `get_last_n(user_id, n) -> list[ChatMessage]` (сортировка по created_at DESC)
+- [ ] `delete_all(user_id) -> None`
+
+**Файлы:**
+- `app/repositories/chat_messages.py`
+
+---
+
+## Эпик 3: Безопасность и утилиты
+
+### Цель
+
+Реализовать криптографические утилиты (JWT, bcrypt) и доменные исключения.
+
+### Технический дизайн
+
+1. **JWT:** `python-jose` с алгоритмом `HS256`.
+2. **Хеширование:** `passlib[bcrypt]` с `bcrypt=4.3.0`.
+3. **Ошибки:** Иерархия доменных исключений в `core/errors.py`.
+
+### Задача 3.1: Хеширование паролей
+
+**Acceptance Criteria:**
+- [ ] `hash_password(password: str) -> str` (passlib)
+- [ ] `verify_password(plain: str, hashed: str) -> bool`
+
+**Файлы:**
+- `app/core/security.py`
+
+### Задача 3.2: JWT функции
+
+**Acceptance Criteria:**
+- [ ] `create_access_token(data: dict) -> str`
+- [ ] Payload содержит: `sub` (user_id как str), `role`, `exp`, `iat`
+- [ ] `decode_token(token: str) -> dict` (валидация подписи и `exp`)
+- [ ] Используются `JWT_SECRET` и `JWT_ALG` из настроек
+
+**Файлы:**
+- `app/core/security.py`
+
+### Задача 3.3: Доменные исключения
+
+**Acceptance Criteria:**
+- [ ] Базовый класс `AppError` (наследник `Exception`)
+- [ ] `ConflictError` — 409 (email уже существует)
+- [ ] `UnauthorizedError` — 401 (неверный пароль или токен)
+- [ ] `ForbiddenError` — 403 (нет прав, задел на будущее)
+- [ ] `NotFoundError` — 404 (пользователь/сообщение не найдены)
+- [ ] `ExternalServiceError` — 502/503 (ошибка OpenRouter)
+
+**Файлы:**
+- `app/core/errors.py`
+
+---
+
+## Эпик 4: Внешний сервис (OpenRouter)
+
+### Цель
+
+Реализовать клиента для взаимодействия с OpenRouter API.
+
+### Технический дизайн
+
+1. **HTTP клиент:** `httpx.AsyncClient`.
+2. **Заголовки:** `Authorization: Bearer {api_key}`, `HTTP-Referer`, `X-Title`.
+3. **Модель по умолчанию:** `stepfun/step-3.5-flash:free`.
+
+### Задача 4.1: OpenRouter клиент
+
+**Acceptance Criteria:**
+- [ ] Класс `OpenRouterClient` с методом `chat_completion(messages, temperature)`
+- [ ] `messages` — список `[{"role": "user", "content": "..."}]`
+- [ ] Заголовки формируются из `settings.OPENROUTER_*`
+- [ ] Таймаут: 60 секунд
+- [ ] При ошибке HTTP (4xx/5xx) выбрасывается `ExternalServiceError`
+- [ ] При отсутствии `choices[0].message.content` — `ExternalServiceError`
+
+**Файлы:**
+- `app/services/openrouter_client.py`
+
+---
+
+## Эпик 5: Бизнес-логика (UseCases)
+
+### Цель
+
+Реализовать сценарии регистрации, логина и работы с чатом.
+
+### Технический дизайн
+
+1. **AuthUseCase:** регистрация (проверка уникальности, хеширование), логин (верификация + JWT).
+2. **ChatUseCase:** сбор контекста, вызов LLM, сохранение истории.
+
+### Задача 5.1: AuthUseCase
+
+**Acceptance Criteria:**
+- [ ] `register(email, password) -> UserPublic`
+  - Проверка: email не занят → иначе `ConflictError`
+  - Хеширование пароля, создание пользователя с role="user"
+- [ ] `login(email, password) -> TokenResponse`
+  - Если пользователь **не найден** или пароль **не совпадает** → **одинаково** `UnauthorizedError` (не раскрывать факт существования email; не отдавать `NotFoundError` на логин)
+  - При успехе: генерация JWT с `sub=str(user.id)`, `role=user.role`
+- [ ] `get_profile(user_id) -> UserPublic`
+  - Поиск пользователя → `NotFoundError`
+
+**Файлы:**
+- `app/usecases/auth.py`
+
+### Задача 5.2: ChatUseCase
+
+**Acceptance Criteria:**
+- [ ] `ask(user_id, prompt, system, max_history, temperature) -> ChatResponse`
+  - Получить историю (до `max_history` сообщений)
+  - Собрать `messages`: опционально system → история → текущий prompt
+  - Сохранить prompt в БД (role="user")
+  - Вызвать `openrouter_client.chat_completion(messages, temperature)`
+  - Сохранить ответ в БД (role="assistant")
+  - Вернуть ответ
+- [ ] `get_history(user_id, limit) -> list[ChatMessage]`
+  - Вызов репозитория с limit (по умолчанию 50)
+- [ ] `clear_history(user_id) -> None`
+  - Вызов `chat_message_repository.delete_all(user_id)`
+
+**Файлы:**
+- `app/usecases/chat.py`
+
+---
+
+## Эпик 6: HTTP слой (API endpoints, DI)
+
+### Цель
+
+Создать эндпоинты FastAPI с dependency injection и обработкой ошибок.
+
+### Технический дизайн
+
+1. **Dependencies:** сессии, репозитории, usecase, текущий пользователь.
+2. **OAuth2:** `OAuth2PasswordBearer` для Swagger.
+3. **Обработка ошибок:** глобальный exception handler.
+
+### Задача 6.1: Dependency Injection
+
+**Acceptance Criteria:**
+- [ ] `get_db_session()` — предоставляет `AsyncSession`
+- [ ] `get_user_repository(session)` — провайдер репозитория
+- [ ] `get_chat_message_repository(session)` — провайдер репозитория
+- [ ] `get_auth_usecase(user_repo)` — провайдер usecase
+- [ ] `get_chat_usecase(chat_repo, openrouter_client)` — провайдер usecase
+- [ ] `get_current_user_id(token=Depends(oauth2_scheme))` — декодирует JWT, возвращает `int(user_id)`
+  - При ошибке токена → `HTTPException(401)`
+
+**Файлы:**
+- `app/api/deps.py`
+
+### Задача 6.2: Эндпоинты авторизации
+
+**Acceptance Criteria:**
+- [ ] `POST /auth/register` → `RegisterRequest` → вызывает `auth_usecase.register()` → `UserPublic`
+- [ ] `POST /auth/login` → `OAuth2PasswordRequestForm` (username=email) → вызывает `auth_usecase.login()` → `TokenResponse`
+- [ ] `GET /auth/me` → `current_user_id` → вызывает `auth_usecase.get_profile()` → `UserPublic`
+- [ ] Преобразование доменных ошибок в HTTP:
+  - `ConflictError` → 409
+  - `UnauthorizedError` → 401
+  - `NotFoundError` → 404
+
+**Файлы:**
+- `app/api/routes_auth.py`
+
+### Задача 6.3: Эндпоинты чата
+
+**Acceptance Criteria:**
+- [ ] `POST /chat` → `ChatRequest` → вызывает `chat_usecase.ask()` → `ChatResponse`
+- [ ] `GET /chat/history` → `?limit` (опционально) → вызывает `chat_usecase.get_history()` → `list[ChatMessage]`
+- [ ] `DELETE /chat/history` → вызывает `chat_usecase.clear_history()` → 204 No Content
+- [ ] Все эндпоинты защищены через `current_user_id`
+
+**Файлы:**
+- `app/api/routes_chat.py`
+
+### Задача 6.4: Основное приложение и обработка ошибок
+
+**Acceptance Criteria:**
+- [ ] `create_app()` фабричная функция в `app/main.py`
+- [ ] Подключены роутеры: `auth_router`, `chat_router`
+- [ ] `GET /health` возвращает `{"status": "ok", "env": settings.ENV}`
+- [ ] При **startup**: создание таблиц через **`Base.metadata.create_all`**, но **совместимо с async-движком** (`create_async_engine` + `aiosqlite`): использовать **`lifespan`** (или аналог из FastAPI) и вызов через **`conn.run_sync(Base.metadata.create_all)`** или иной паттерн из **SQLAlchemy 2 Async** и **`ТЗ_0`**. Не применять к async engine синхронный вызов вида **`create_all(bind=engine)`**.
+- [ ] Глобальный exception handler для `AppError` → соответствующий HTTP-ответ
+- [ ] CORS настроен (опционально, из конфига)
+
+**Файлы:**
+- `app/main.py`
+
+---
+
+## Эпик 7: Документация, тестирование, приёмка
+
+### Цель
+
+Подготовить проект к сдаче: документация, скриншоты, проверка качества.
+
+### Задача 7.1: README и скриншоты (критично для сдачи)
+
+**Acceptance Criteria:**
+- [ ] README содержит:
+  - Описание проекта
+  - Требования (Python 3.11+)
+  - Установку через **`uv`** (по **`ТЗ_0`**: `uv venv`, цепочка **`uv pip compile`** / **`uv pip install`**; допустим также описанный в README вариант с **`pip install -e .`**, если он воспроизводимо поднимает зависимости)
+  - Настройку `.env` (пример)
+  - Запуск: `uv run uvicorn app.main:app --reload`
+  - Ссылку на Swagger: `http://localhost:8000/docs`
+- [ ] Скриншоты (в README):
+  - Регистрация пользователя с email **`student_surname@email.com`**
+  - Логин и получение JWT токена
+  - Авторизация через кнопку Authorize в Swagger
+  - `POST /chat` с запросом и ответом LLM
+  - `GET /chat/history` с историей диалога
+  - `DELETE /chat/history` (успешное удаление)
+
+**Файлы:**
+- `README.md`
+- Папка `screenshots/` (если скриншоты отдельно)
+
+### Задача 7.2: Проверка качества кода
+
+**Acceptance Criteria:**
+- [ ] **`ruff check`** (по областям приложения или репозитория) не выдаёт ошибок — **обязательно для критериев приёмки**
+- [ ] **`ruff format`** прогнан по коду (**рекомендуется**, в критериях балльно главное проверить **`check`**)
+- [ ] Нет `print()` в production-коде
+- [ ] Нет закомментированного кода в финальной версии
+
+**Команда:**
+```bash
+uv run ruff check app/
+uv run ruff format app/
+```
+
+### Задача 7.3: Ручное тестирование сценариев
+
+**Acceptance Criteria:**
+- [ ] Приложение запускается без ошибок
+- [ ] Swagger UI доступен на `/docs`
+- [ ] Регистрация создаёт запись в `app.db` (проверить через `sqlite3`)
+- [ ] Логин возвращает JWT (проверить через `jwt.decode`)
+- [ ] `POST /chat` с валидным токеном возвращает ответ от LLM
+- [ ] `GET /chat/history` показывает отправленные сообщения и ответы
+- [ ] `DELETE /chat/history` очищает историю
+- [ ] Без токена защищённые эндпоинты возвращают 401
+
+**Инструменты:**
+- `curl` или Swagger UI
+- `sqlite3 app.db` для проверки БД
+
+---
+
+## Итоговое архитектурное решение
+
+**Целевая архитектура слоёв и интерфейсы между ними утверждены как техническая спецификация.** Фактическая готовность кода и формальная приёмка — по выполнению чеклистов эпиков (особенно эпика 7).
+
+**Обязательные архитектурные инварианты:**
+
+1. **Слои изолированы:** API → UseCases → Repositories → DB / Services
+2. **Эндпоинты не содержат бизнес-логики** — только вызовы usecase
+3. **Репозитории не знают о JWT, хешировании и OpenRouter**
+4. **UseCase не выбрасывают `HTTPException`** — только доменные исключения; **AuthUseCase** при логине не различает для клиента «email не найден» и «неверный пароль» — **`UnauthorizedError`** в обоих случаях
+5. **JWT содержит `sub`, `role`, `exp`, `iat`** (role обязателен)
+6. **OpenRouter использует модель `stepfun/step-3.5-flash:free`**
+7. **База данных — SQLite + aiosqlite**; DDL при старте только **async-safe** способом (см. эпик 6.4), без синхронного **`create_all(bind=async_engine)`**
+8. **Зависимости управляются через `uv`**, проект воспроизводим в чистом окружении
+9. **README содержит все скриншоты** с email формата `student_surname@email.com`
+10. **`ruff check` проходит без ошибок**
+
+---
+
+**Спецификация согласована с `ТЗ_0.txt` и `Критерии_оценки_fastapi_llm.txt`.**  
+**Статус:** готова к реализации.
