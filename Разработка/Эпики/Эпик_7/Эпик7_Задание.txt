@@ -14,7 +14,7 @@
 **Необходимый вывод/поведение:** полная установка через uv по ТЗ + скриншоты с email `student_surname@email.com` и ключевые эндпоинты
 
 ## Требования ТЗ
-Файл `project/Критерии_оценки_fastapi_llm.txt`: README, скриншоты register/login/token/authorize/POST chat/GET+DELETE истории.
+Файл `Разработка/Критерии_оценки_fastapi_llm.txt`: README, скриншоты register/login/token/authorize/POST chat/GET+DELETE истории.
 
 ## Задача
 Оформить README и набрать все обязательные скриншоты под критерии.
