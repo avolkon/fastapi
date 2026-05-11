@@ -217,5 +217,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Cursor (локальные правила IDE, не в репозиторий)
+.cursor/
+
 # Local SQLite DB
 app.db
